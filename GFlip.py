@@ -78,6 +78,22 @@ if HAS_BG:
     dark_overlay.set_alpha(130)
     bg_dark.blit(dark_overlay, (0, 0))
 
+# ── Ending background ─────────────────────────────────────────────────────────
+try:
+    ending_bg_raw = pygame.image.load("ending-escape.png").convert()
+    ending_bg_raw = pygame.transform.scale(ending_bg_raw, (SCREEN_W, SCREEN_H))
+    HAS_ENDING_BG = True
+except Exception as e:
+    print(f"[Ending BG] Could not load ending-escape.png: {e}")
+    HAS_ENDING_BG = False
+
+# ── Finish music ──────────────────────────────────────────────────────────────
+try:
+    pygame.mixer.Sound("finishgame.mp3")   # just test load; we'll load via music
+    HAS_FINISH_MUSIC = True
+except Exception:
+    HAS_FINISH_MUSIC = False
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  HELPERS
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -343,7 +359,6 @@ class BossAlien:
         self.wave_speed = 0.022
         self.phase_angle = 0.0
         self.orbs: list = []
-        # FIX: large initial cooldown so boss doesn't fire the instant it spawns
         self.orb_cooldown = 150
         self.orb_interval = 90
         self.dashing     = False
@@ -355,7 +370,6 @@ class BossAlien:
         self.spin_angle  = 0.0
         self.tint        = (180, 0, 255)
         self.eye_col     = NEON_PINK
-        # FIX: spawn delay — boss won't move or shoot until this reaches 0
         self.spawn_delay = 180
 
     def update(self, player_x, player_y):
@@ -368,7 +382,6 @@ class BossAlien:
         self.hit_flash   = max(0, self.hit_flash - 1)
         self.spin_angle  = (self.spin_angle + (3 if self.phase == 1 else 5)) % 360
 
-        # FIX: honour spawn delay — freeze movement and shooting
         if self.spawn_delay > 0:
             self.spawn_delay -= 1
             self._update_orbs()
@@ -377,7 +390,6 @@ class BossAlien:
         self.orb_cooldown = max(0, self.orb_cooldown - 1)
         self.phase_angle += self.wave_speed
 
-        # Phase 2 trigger
         if self.hp <= BOSS_PHASE_THRESHOLD and self.phase == 1:
             self.phase = 2
             self.enrage_announced = True
@@ -387,7 +399,6 @@ class BossAlien:
             self.tint  = (255, 40, 80)
             self.eye_col = NEON_YELLOW
 
-        # Movement
         if self.dashing:
             self.x += self.dash_vx
             self.y += self.dash_vy
@@ -398,7 +409,6 @@ class BossAlien:
             target_x = SCREEN_W * 0.68
             self.x += (target_x - self.x) * 0.012
             self.y = self.base_y + math.sin(self.phase_angle) * self.wave_amp
-            # Phase 2 dash
             if self.phase == 2 and self.tick % 120 == 0:
                 dx = player_x - self.x
                 dy = player_y - self.y
@@ -409,11 +419,9 @@ class BossAlien:
                 self.dash_timer = 14
                 self.dashing    = True
 
-        # Clamp
         self.x = max(SCREEN_W * 0.35, min(SCREEN_W - BOSS_W // 2 - 10, self.x))
         self.y = max(PLAY_TOP + BOSS_H // 2 + 8, min(PLAY_BOT - BOSS_H // 2 - 8, self.y))
 
-        # Shoot
         if self.orb_cooldown == 0:
             self._shoot(player_x, player_y)
             self.orb_cooldown = self.orb_interval
@@ -454,8 +462,6 @@ class BossAlien:
             orb["x"] += orb["vx"]
             orb["y"] += orb["vy"]
             orb["life"] -= 1
-        # FIX: remove orbs that go off the LEFT edge (x < 0) so they can't
-        # hit the player invisibly after scrolling past them
         self.orbs = [o for o in self.orbs
                      if o["life"] > 0
                      and 0 < o["x"] < SCREEN_W + 30
@@ -476,7 +482,6 @@ class BossAlien:
         return pygame.Rect(int(self.x) - hw, int(self.y) - hh, hw * 2, hh * 2)
 
     def orb_rects(self):
-        # FIX: shrink hitbox by 3px per side — fairer collision detection
         return [pygame.Rect(int(o["x"]) - o["r"] + 3, int(o["y"]) - o["r"] + 3,
                             max(2, o["r"] * 2 - 6), max(2, o["r"] * 2 - 6))
                 for o in self.orbs]
@@ -486,7 +491,6 @@ class BossAlien:
         t      = tick * 0.05
         pulse  = (math.sin(t) + 1) / 2
 
-        # Draw orbs behind boss
         for orb in self.orbs:
             ox, oy = int(orb["x"]), int(orb["y"])
             r      = orb["r"]
@@ -503,13 +507,11 @@ class BossAlien:
             self.tint, (10, 0, 30), 0.3 - 0.15 * pulse
         )
 
-        # Outer glow
         glow_r = int(60 + 14 * pulse)
         gs = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
         pygame.draw.circle(gs, (*self.tint, int(40 + 25 * pulse)), (glow_r, glow_r), glow_r)
         surface.blit(gs, (cx - glow_r, cy - glow_r))
 
-        # Body
         dome = pygame.Rect(cx - 40, cy - 55, 80, 50)
         pygame.draw.ellipse(surface, lerp_color(body_col, WHITE, 0.3), dome)
         disc = pygame.Rect(cx - 60, cy - 22, 120, 44)
@@ -517,7 +519,6 @@ class BossAlien:
         under = pygame.Rect(cx - 48, cy + 14, 96, 26)
         pygame.draw.ellipse(surface, lerp_color(body_col, BLACK, 0.5), under)
 
-        # Spinning ring lights
         for i in range(8):
             angle = math.radians(self.spin_angle + i * 45)
             lx = cx + int(math.cos(angle) * 42)
@@ -525,19 +526,16 @@ class BossAlien:
             c  = self.tint if i % 2 == 0 else NEON_YELLOW
             pygame.draw.circle(surface, c, (lx, ly), 3)
 
-        # Eye
         eye_r = int(10 + 3 * pulse)
         pygame.draw.circle(surface, self.eye_col, (cx, cy - 28), eye_r)
         pygame.draw.circle(surface, BLACK,         (cx, cy - 28), eye_r - 3)
         pygame.draw.circle(surface, self.eye_col,  (cx + 2, cy - 31), 3)
 
-        # Phase 2 extra eyes
         if self.phase == 2:
             for ex, ey_off in [(-28, -10), (28, -10)]:
                 pygame.draw.circle(surface, NEON_YELLOW, (cx + ex, cy + ey_off), 5)
                 pygame.draw.circle(surface, BLACK,        (cx + ex, cy + ey_off), 3)
 
-        # Tractor beam
         beam_alpha = int(70 + 50 * pulse)
         beam_surf  = pygame.Surface((50, 60), pygame.SRCALPHA)
         for row in range(60):
@@ -547,19 +545,16 @@ class BossAlien:
                 beam_surf.fill((*self.tint, fade), (25 - w // 2, row, w, 1))
         surface.blit(beam_surf, (cx - 25, cy + 24))
 
-        # Antenna
         pygame.draw.line(surface, self.tint, (cx, cy - 55), (cx + 10, cy - 70), 3)
         pygame.draw.circle(surface, NEON_YELLOW, (cx + 10, cy - 70), int(4 + 2 * pulse))
         if self.phase == 2:
             pygame.draw.line(surface, NEON_PINK, (cx, cy - 55), (cx - 10, cy - 68), 2)
             pygame.draw.circle(surface, NEON_PINK, (cx - 10, cy - 68), int(3 + pulse))
 
-        # Outlines
         outline = lerp_color(self.tint, WHITE, 0.4 + 0.3 * pulse)
         pygame.draw.ellipse(surface, outline, disc, 2)
         pygame.draw.ellipse(surface, outline, dome, 2)
 
-        # HP bar above boss
         bar_w = 110
         bar_x = cx - bar_w // 2
         bar_y = cy - 75
@@ -571,7 +566,6 @@ class BossAlien:
         boss_lbl = f_tiny.render("◆ BOSS", True, NEON_YELLOW)
         surface.blit(boss_lbl, (bar_x + bar_w + 6, bar_y))
 
-        # FIX: draw countdown ring when spawn_delay is active
         if self.spawn_delay > 0:
             warn = f_small.render("BOSS CHARGING...", True, NEON_YELLOW)
             ws = pygame.Surface((warn.get_width() + 16, warn.get_height() + 8), pygame.SRCALPHA)
@@ -790,6 +784,268 @@ class Bullet:
         pygame.draw.rect(surface, NEON_YELLOW, (bx, by, BULLET_W, BULLET_H), border_radius=2)
         pygame.draw.rect(surface, WHITE, (bx + 2, by + 1, BULLET_W - 4, BULLET_H - 2), border_radius=1)
         pygame.draw.circle(surface, WHITE, (bx + BULLET_W, by + BULLET_H // 2), 3)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  ENDING SCREEN
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# The full story, one page per entry. Each entry is a list of lines.
+ENDING_STORY = [
+    # Page 0 — title card
+    [
+        "",
+        "G  F L I P",
+        "",
+        "— EPILOGUE —",
+        "",
+        "",
+        "[ PRESS  ENTER  TO  READ  THE  STORY ]",
+    ],
+    # Page 1
+    [
+        "",
+        "After months adrift in hostile space,",
+        "the last human astronaut had finally",
+        "done the impossible.",
+        "",
+        "The alien fleet — three waves strong —",
+        "lay scattered as cosmic dust behind them.",
+        "",
+        "The Boss was defeated.",
+    ],
+    # Page 2
+    [
+        "",
+        "With the warp portal crumbling at their back,",
+        "the astronaut pushed the ship's engines",
+        "far beyond their limits.",
+        "",
+        "Gravity had been their enemy and their weapon.",
+        "Now, at last, it pulled them home.",
+    ],
+    # Page 3
+    [
+        "",
+        "Through the swirling galaxy they flew —",
+        "past purple nebulae and dying stars,",
+        "past the ruins of a war that nearly",
+        "consumed the universe itself.",
+        "",
+        "A single blue thruster flame",
+        "lit the darkness.",
+    ],
+    # Page 4
+    [
+        "",
+        "Somewhere far ahead,",
+        "a pale blue dot waited.",
+        "",
+        "Home.",
+        "",
+        "They were finally going home.",
+    ],
+    # Page 5 — credits / final
+    [
+        "",
+        "★  YOU  WIN  ★",
+        "",
+        "Thank you for playing",
+        "G  F L I P",
+        "",
+        f"Developed with  ♥  and pygame",
+        "",
+        "[ ENTER → Main Menu ]",
+    ],
+]
+
+# Line colours per page (cycling neon palette)
+_PAGE_COLORS = [
+    NEON_YELLOW,   # page 0
+    NEON_CYAN,     # page 1
+    NEON_GREEN,    # page 2
+    NEON_PURPLE,   # page 3
+    NEON_PINK,     # page 4
+    NEON_YELLOW,   # page 5
+]
+
+# Fonts per line role
+_ENDING_TITLE_FONT   = pf(48)
+_ENDING_BODY_FONT    = pf(22, bold=False)
+_ENDING_PROMPT_FONT  = pf(18)
+
+
+class EndingScreen:
+    """Handles the full ending sequence."""
+
+    def __init__(self, final_score=0):
+        self.final_score   = final_score
+        self.page          = 0          # which story page we're on
+        self.fade_in       = 0          # 0..255 alpha for fade-in
+        self.fade_out      = 0          # 0..255 alpha for fade-out (when leaving page)
+        self.fading_out    = False
+        self.done          = False      # True → return to main menu
+        self._tick         = 0
+        self._star_scroll  = 0.0
+        # Parallax star layers for the ending background
+        self._stars = [
+            {"x": random.uniform(0, SCREEN_W),
+             "y": random.uniform(0, SCREEN_H),
+             "r": random.choice([1, 1, 2]),
+             "speed": random.uniform(0.3, 1.4),
+             "col": random.choice([WHITE, NEON_CYAN, NEON_PURPLE, (200, 180, 255)])}
+            for _ in range(120)
+        ]
+
+    # ── Called once per frame ────────────────────────────────────────────────
+    def update(self):
+        self._tick += 1
+        self._star_scroll += 0.6
+
+        # Scroll stars slowly for a drifting-through-space feel
+        for s in self._stars:
+            s["x"] -= s["speed"] * 0.5
+            if s["x"] < 0:
+                s["x"] = SCREEN_W + 2
+                s["y"] = random.uniform(0, SCREEN_H)
+
+        if self.fading_out:
+            self.fade_out = min(255, self.fade_out + 8)
+            if self.fade_out >= 255:
+                # Advance to next page
+                self.page      += 1
+                self.fading_out = False
+                self.fade_in    = 0
+                self.fade_out   = 0
+                if self.page >= len(ENDING_STORY):
+                    self.done = True
+        else:
+            self.fade_in = min(255, self.fade_in + 5)
+
+    # ── ENTER pressed ────────────────────────────────────────────────────────
+    def advance(self):
+        if self.fading_out:
+            return   # already transitioning
+        if self.page >= len(ENDING_STORY) - 1:
+            # Last page — go back to menu
+            self.fading_out = True
+            self.done = False   # will be set True after fade completes in update()
+        else:
+            self.fading_out = True
+
+    # ── Draw ─────────────────────────────────────────────────────────────────
+    def draw(self, surface):
+        # Background: ending image if available, else deep space
+        if HAS_ENDING_BG:
+            surface.blit(ending_bg_raw, (0, 0))
+            # Dim overlay so text is readable
+            dim = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            dim.fill((0, 0, 0, 155))
+            surface.blit(dim, (0, 0))
+        else:
+            surface.fill((2, 1, 12))
+            # Draw parallax stars manually if no image
+            for s in self._stars:
+                sx, sy = int(s["x"]), int(s["y"])
+                if s["r"] == 1:
+                    surface.set_at((sx, sy), s["col"])
+                else:
+                    pygame.draw.circle(surface, s["col"], (sx, sy), s["r"])
+
+        # Extra star overlay (always drawn for sparkle on top of image too)
+        for s in self._stars:
+            sx, sy = int(s["x"]), int(s["y"])
+            if s["r"] == 1:
+                try:
+                    surface.set_at((sx, sy), s["col"])
+                except Exception:
+                    pass
+            else:
+                pygame.draw.circle(surface, s["col"], (sx, sy), s["r"])
+
+        if self.page >= len(ENDING_STORY):
+            return
+
+        page_lines = ENDING_STORY[self.page]
+        base_color = _PAGE_COLORS[self.page % len(_PAGE_COLORS)]
+        pulse = (math.sin(self._tick * 0.05) + 1) / 2
+
+        # ── Draw story panel ────────────────────────────────────────────────
+        panel_w = 680
+        panel_h = 320
+        panel_x = SCREEN_W // 2 - panel_w // 2
+        panel_y = SCREEN_H // 2 - panel_h // 2 - 20
+        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel_surf.fill((0, 0, 0, 170))
+        surface.blit(panel_surf, (panel_x, panel_y))
+        # Glowing border
+        glow_col = lerp_color(base_color, WHITE, 0.3 + 0.2 * pulse)
+        pygame.draw.rect(surface, glow_col, (panel_x, panel_y, panel_w, panel_h), 2)
+        pygame.draw.rect(surface, (*base_color, 80),
+                         (panel_x - 3, panel_y - 3, panel_w + 6, panel_h + 6), 1)
+
+        # Score badge (only pages after the first title card)
+        if self.page > 0:
+            score_txt = f_tiny.render(f"FINAL SCORE:  {self.final_score:06d}", True, NEON_YELLOW)
+            surface.blit(score_txt, (panel_x + panel_w - score_txt.get_width() - 10,
+                                     panel_y + panel_h + 6))
+
+        # ── Render lines ────────────────────────────────────────────────────
+        line_h    = 32
+        total_h   = len(page_lines) * line_h
+        start_y   = panel_y + (panel_h - total_h) // 2
+
+        for i, line in enumerate(page_lines):
+            if not line:
+                continue
+            # Title-style for certain lines
+            if line.startswith("G  F") or line.startswith("★") or line == "Home." \
+                    or line == "— EPILOGUE —":
+                font  = _ENDING_TITLE_FONT
+                color = lerp_color(base_color, WHITE, 0.5 + 0.3 * pulse)
+                # Glow pass
+                glow_img = font.render(line, True, base_color)
+                glow_img.set_alpha(int(60 + 40 * pulse))
+                for dx in (-3, 3):
+                    surface.blit(glow_img,
+                                 (SCREEN_W // 2 - glow_img.get_width() // 2 + dx,
+                                  start_y + i * line_h - 4 + dx))
+            elif line.startswith("["):
+                font  = _ENDING_PROMPT_FONT
+                color = lerp_color(NEON_YELLOW, WHITE, pulse) if (self._tick // 30) % 2 == 0 else NEON_YELLOW
+            else:
+                font  = _ENDING_BODY_FONT
+                color = lerp_color(DIM_WHITE, WHITE, 0.4 + 0.3 * pulse)
+
+            img = font.render(line, True, color)
+            surface.blit(img, (SCREEN_W // 2 - img.get_width() // 2,
+                               start_y + i * line_h))
+
+        # ── Page indicator dots ──────────────────────────────────────────────
+        total_pages = len(ENDING_STORY)
+        dot_r       = 5
+        dot_spacing = 18
+        dots_w      = total_pages * dot_spacing
+        dot_y       = panel_y + panel_h + 20
+        dot_x_start = SCREEN_W // 2 - dots_w // 2
+        for d in range(total_pages):
+            cx = dot_x_start + d * dot_spacing + dot_r
+            if d == self.page:
+                pygame.draw.circle(surface, base_color, (cx, dot_y), dot_r)
+            else:
+                pygame.draw.circle(surface, (60, 50, 90), (cx, dot_y), dot_r - 2)
+
+        # ── Fade overlay ────────────────────────────────────────────────────
+        if self.fade_in < 255 or self.fading_out:
+            fade_alpha = self.fade_out if self.fading_out else (255 - self.fade_in)
+            if fade_alpha > 0:
+                fade_surf = pygame.Surface((SCREEN_W, SCREEN_H))
+                fade_surf.fill((0, 0, 0))
+                fade_surf.set_alpha(fade_alpha)
+                surface.blit(fade_surf, (0, 0))
+
+        # Scanlines
+        surface.blit(scanline_surf, (0, 0))
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  START SCREEN ASSETS
@@ -2013,7 +2269,6 @@ class Level3:
         self.boss = BossAlien()
         self.boss_spawned = True
         self.boss_announce_timer = 180
-        # spawn_delay is already set in BossAlien.__init__ to 180
 
     def update(self, keys):
         if self.paused or self.transition or self.dead:
@@ -2057,7 +2312,6 @@ class Level3:
         for bullet in self.bullets:
             bullet.update()
 
-        # Boss update — always call so orbs keep moving even during spawn_delay
         if self.boss and self.boss.alive:
             self.boss.update(self.player.x, self.player.y)
         elif self.boss and not self.boss.alive and not self.boss_defeated:
@@ -2082,7 +2336,6 @@ class Level3:
                 continue
             br = bullet.rect()
 
-            # vs boss
             if (self.boss and self.boss.alive
                     and bi not in bullets_to_remove
                     and br.colliderect(self.boss.rect())):
@@ -2162,14 +2415,11 @@ class Level3:
             if pr.colliderect(rock.rect()):
                 self.kill_player(); return
 
-        # Boss body collision — only active once spawn_delay has expired
         if (self.boss and self.boss.alive
                 and self.boss.spawn_delay <= 0
                 and pr.colliderect(self.boss.rect())):
             self.kill_player(); return
 
-        # Boss orb collision — only orbs that are on-screen (x > 0 already enforced
-        # in _update_orbs, but double-check here too)
         if self.boss:
             for orb_rect in self.boss.orb_rects():
                 if orb_rect.x > 0 and pr.colliderect(orb_rect):
@@ -2341,13 +2591,16 @@ class Level3:
             ov.fill((60, 0, 80, alpha))
             surface.blit(ov, (0, 0))
             if self.trans_timer > 30:
-                draw_text_cx(surface, "LEVEL 3  COMPLETE!",    f_body,  NEON_PURPLE, 200)
-                draw_text_cx(surface, f"SCORE:  {self.score}", f_sub,   NEON_YELLOW, 248)
+                # ── Show "entering ending" text, then the main loop
+                # will switch to ST_ENDING on ENTER ──────────────────
+                draw_text_cx(surface, "BOSS  DEFEATED!",       f_body,  NEON_PURPLE, 190)
+                draw_text_cx(surface, f"SCORE:  {self.score}", f_sub,   NEON_YELLOW, 238)
                 draw_text_cx(surface, f"ALIENS DESTROYED: {self.aliens_destroyed}",
-                             f_small, NEON_CYAN, 286)
-                draw_text_cx(surface, "YOU WIN!  Thanks for playing G FLIP",
-                             f_small, NEON_GREEN, 330)
-                draw_text_cx(surface, "ESC → Menu", f_small, NEON_PINK, 374)
+                             f_small, NEON_CYAN, 278)
+                draw_text_cx(surface, "The astronaut escapes into deep space...",
+                             f_small, NEON_GREEN, 320)
+                draw_text_cx(surface, "ENTER → Watch the Ending     ESC → Menu",
+                             f_small, DIM_WHITE, 368)
 
     def draw_hud(self, surface, tick):
         bar = pygame.Surface((SCREEN_W, 40), pygame.SRCALPHA)
@@ -2412,17 +2665,19 @@ class Level3:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  STATE MACHINE
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ST_START  = "start"
-ST_GUIDE  = "guide"
-ST_LEVEL1 = "level1"
-ST_LEVEL2 = "level2"
-ST_LEVEL3 = "level3"
+ST_START   = "start"
+ST_GUIDE   = "guide"
+ST_LEVEL1  = "level1"
+ST_LEVEL2  = "level2"
+ST_LEVEL3  = "level3"
+ST_ENDING  = "ending"          # ← NEW
 
 state  = ST_START
 tick   = 0
 level1 = None
 level2 = None
 level3 = None
+ending_screen: EndingScreen | None = None   # ← NEW
 
 def start_level1():
     global level1
@@ -2438,6 +2693,18 @@ def start_level3(carry_score=0):
     global level3
     level3 = Level3(carry_score)
     _play_music()
+
+def start_ending(final_score=0):
+    """Switch to the ending state, play finish music, create EndingScreen."""
+    global ending_screen
+    ending_screen = EndingScreen(final_score)
+    pygame.mixer.music.stop()
+    try:
+        pygame.mixer.music.load("finishgame.mp3")
+        pygame.mixer.music.set_volume(0.65)
+        pygame.mixer.music.play(-1)
+    except Exception as e:
+        print(f"[Ending Music] {e}")
 
 def _play_music():
     try:
@@ -2537,7 +2804,11 @@ while running:
                     elif event.key == pygame.K_ESCAPE:
                         state = ST_START
                 elif level3.transition:
-                    if event.key == pygame.K_ESCAPE:
+                    if event.key == pygame.K_RETURN:
+                        # ── Trigger ending instead of just going to menu ──
+                        start_ending(level3.score)
+                        state = ST_ENDING
+                    elif event.key == pygame.K_ESCAPE:
                         state = ST_START
                 elif level3.paused:
                     if event.key == pygame.K_ESCAPE:
@@ -2553,6 +2824,21 @@ while running:
                         pygame.mixer.music.pause()
                     elif event.key == pygame.K_e:
                         level3.shoot()
+
+            # ── Ending state input ─────────────────────────────────────────
+            elif state == ST_ENDING:
+                if event.key == pygame.K_RETURN:
+                    if ending_screen:
+                        ending_screen.advance()
+                elif event.key == pygame.K_ESCAPE:
+                    # Skip straight to menu
+                    pygame.mixer.music.stop()
+                    state = ST_START
+
+    # ── Check if ending finished (last page faded out) ─────────────────────
+    if state == ST_ENDING and ending_screen and ending_screen.done:
+        pygame.mixer.music.stop()
+        state = ST_START
 
     # Hold-E shooting
     if state == ST_LEVEL1 and level1 and not level1.dead and not level1.paused and not level1.transition:
@@ -2653,6 +2939,12 @@ while running:
             draw_text_cx(screen, "PAUSED",            f_body,  NEON_PURPLE, 210)
             draw_text_cx(screen, "ESC  →  Resume",    f_small, NEON_YELLOW, 270)
             draw_text_cx(screen, "Q    →  Main Menu", f_small, DIM_WHITE,   310)
+
+    # ── Ending screen ─────────────────────────────────────────────────────────
+    elif state == ST_ENDING:
+        if ending_screen:
+            ending_screen.update()
+            ending_screen.draw(screen)
 
     pygame.display.flip()
 
